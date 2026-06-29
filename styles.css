@@ -1,0 +1,15 @@
+/* ═══════════════════════════════════════════════════════════════
+   Arateko Labs — Design System · global entry point
+   ───────────────────────────────────────────────────────────────
+   Consumers link THIS one file. It is an @import manifest only —
+   no rules live here. Everything reachable from here ships to
+   consumers: tokens + webfonts.
+
+   Arateko · "o caminho da decisão"  ·  Arateko Labs (família Aravox)
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('tokens/fonts.css');
+@import url('tokens/colors.css');
+@import url('tokens/typography.css');
+@import url('tokens/spacing.css');
+@import url('tokens/elevation.css');

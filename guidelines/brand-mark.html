@@ -1,0 +1,29 @@
+<!-- @dsCard group="Marca" viewport="700x300" name="O símbolo" subtitle="Farol âmbar sobre a luz que irradia e converge — o Funil de Valor tornado visível." -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;font-family:var(--font-sans)}
+  .stage{display:flex;height:300px}
+  .dark{flex:1.2;background:var(--brand-bg);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  .dark::after{content:"";position:absolute;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(247,226,196,.10),transparent 65%);top:18px}
+  .dark img{height:200px;position:relative;z-index:1}
+  .light{flex:1;background:var(--paper);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border-left:1px solid var(--border)}
+  .light img{height:120px}
+  .word{font-family:var(--font-serif);font-size:22px;font-weight:600;letter-spacing:.02em;color:var(--text-strong)}
+  .cap{font-size:10px;color:var(--text-hint);text-transform:uppercase;letter-spacing:.1em}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="dark"><img src="../assets/arateko-mark-dark.png" alt="Arateko mark"></div>
+    <div class="light">
+      <img src="../assets/arateko-mark-ink.png" alt="Arateko mark inked">
+      <div class="word">Arateko</div>
+      <div class="cap">o caminho da decisão</div>
+    </div>
+  </div>
+</body>
+</html>

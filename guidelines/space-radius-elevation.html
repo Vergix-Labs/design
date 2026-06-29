@@ -1,0 +1,40 @@
+<!-- @dsCard group="Espaçamento" viewport="700x170" name="Raios & elevação" subtitle="Cantos calmos e sombras quentes de baixo espalhamento." -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;font-family:var(--font-sans);background:var(--paper);color:var(--text);padding:22px 26px}
+  .row{display:flex;gap:22px;align-items:center}
+  .col{display:flex;gap:14px;align-items:flex-end}
+  .box{width:60px;height:60px;background:var(--white);border:1px solid var(--border);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px}
+  .n{font-family:var(--font-mono);font-size:9.5px;color:var(--text-muted)}
+  .sep{width:1px;align-self:stretch;background:var(--border)}
+  .grp{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-hint);margin-bottom:8px}
+</style>
+</head>
+<body>
+  <div class="row">
+    <div>
+      <div class="grp">Raios</div>
+      <div class="col">
+        <div class="box" style="border-radius:8px"><span class="n">sm·8</span></div>
+        <div class="box" style="border-radius:10px"><span class="n">md·10</span></div>
+        <div class="box" style="border-radius:14px"><span class="n">lg·14</span></div>
+        <div class="box" style="border-radius:20px"><span class="n">xl·20</span></div>
+        <div class="box" style="border-radius:999px"><span class="n">pill</span></div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div>
+      <div class="grp">Elevação</div>
+      <div class="col">
+        <div class="box" style="border-radius:10px;box-shadow:var(--shadow-sm);border-color:var(--border-soft)"><span class="n">sm</span></div>
+        <div class="box" style="border-radius:10px;box-shadow:var(--shadow-md);border-color:var(--border-soft)"><span class="n">md</span></div>
+        <div class="box" style="border-radius:10px;box-shadow:var(--shadow-lg);border-color:transparent"><span class="n">lg</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

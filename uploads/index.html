@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arateko — Wireframe MVP (Copilot)</title>
+<style>
+  :root{
+    --ink:#1d1f24; --mut:#6b6f76; --hint:#9aa0a6; --line:#cdd1d6;
+    --paper:#f6f6f4; --card:#ffffff; --fill:#eceef0; --ai:#e7eef6; --aitx:#1e60a5;
+    --gate:#f3e7d6; --gatetx:#8a5a12;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 80px}
+  h1{font-size:20px;font-weight:600;margin:0 0 2px}
+  h2{font-size:15px;font-weight:600;margin:0}
+  .sub{color:var(--mut);font-size:13px;margin:0 0 18px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 24px;font-size:12px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.02em}
+  .b-ai{background:var(--ai);color:var(--aitx)}
+  .b-gate{background:var(--gate);color:var(--gatetx)}
+  .b-art{background:var(--fill);color:var(--mut)}
+  /* flow map */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:0 0 26px}
+  .fstep{flex:1;min-width:84px;border:1px solid var(--line);background:var(--card);border-radius:10px;
+    padding:10px 8px;text-align:center;font-size:11.5px;position:relative}
+  .fstep .n{display:block;font-size:10px;color:var(--hint)}
+  .fstep .t{font-weight:600;font-size:12px;margin-top:2px}
+  .farr{align-self:center;color:var(--hint);padding:0 6px;font-size:14px}
+  .loop{font-size:11px;color:var(--hint);text-align:center;margin:-14px 0 24px}
+  /* screens */
+  .screen{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:0 0 18px;overflow:hidden}
+  .sbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 16px;border-bottom:1px solid var(--line);background:#fbfbfa}
+  .sbar .meta{font-size:11px;color:var(--hint)}
+  .sbody{padding:18px 16px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:720px){.g2,.g3{grid-template-columns:1fr}}
+  .ph{border:1px dashed var(--line);border-radius:8px;background:var(--fill);
+    color:var(--hint);font-size:12px;padding:12px;min-height:42px}
+  .field{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 11px;color:var(--hint);font-size:13px}
+  .lbl{font-size:11px;color:var(--mut);font-weight:600;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em}
+  .btn{display:inline-block;border:1px solid var(--ink);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600}
+  .btn.ghost{border-color:var(--line);color:var(--mut)}
+  .line{height:9px;background:var(--fill);border-radius:5px;margin:7px 0}
+  .line.s{width:60%}.line.m{width:80%}
+  .note{display:flex;gap:8px;align-items:flex-start;border-top:1px dashed var(--line);
+    padding:11px 16px;background:#fcfbf8;color:var(--mut);font-size:12.5px}
+  .note b{color:var(--ink);font-weight:600}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:11.5px;color:var(--mut);margin:0 5px 5px 0;background:#fff}
+  table.wf{width:100%;border-collapse:collapse;font-size:12px}
+  table.wf th,table.wf td{border:1px solid var(--line);padding:7px 8px;text-align:left}
+  table.wf th{background:#fbfbfa;color:var(--mut);font-weight:600}
+  .sm{font-size:11.5px;color:var(--hint)}
+  .wheelbar{display:flex;gap:5px;margin:8px 0 0}
+  .wheelbar span{flex:1;height:5px;border-radius:3px;background:var(--line)}
+  .wheelbar span.on{background:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Arateko · wireframe</h1>
+  <p class="sub">MVP — Copilot de sessão (intensidade Sprint). Low-fidelity, grayscale. Funil de Valor: Enquadrar → Expandir → Ranquear → Convergir → Operar.</p>
+  <div class="legend">
+    <span class="badge b-ai">IA: rascunho</span>
+    <span class="badge b-gate">GATE: aval humano</span>
+    <span class="badge b-art">artefato</span>
+    <span class="sm">— a IA amplia; o humano decide nos 4 gates.</span>
+  </div>
+
+  <!-- FLOW MAP -->
+  <div class="flow">
+    <div class="fstep"><span class="n">entrada</span><span class="t">Onboarding</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">escopo</span><span class="t">4Ms + Intensidade</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">1 · Enquadrar</span><span class="t">Charter ·<br>GATE 1</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">2 · Expandir</span><span class="t">Opções + Critérios</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">3 · Ranquear</span><span class="t">MCDA ·<br>GATE 2</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">4 · Convergir</span><span class="t">Funil ·<br>GATE 3</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">5 · Operar</span><span class="t">Plano ·<br>GATE 4</span></div>
+    <span class="farr">→</span>
+    <div class="fstep"><span class="n">saída</span><span class="t">Decision log</span></div>
+  </div>
+  <p class="loop">↩ loop-back: se um critério elimina todas as opções, ou os 4Ms reprovam em Operar, volta-se à fase anterior.</p>
+
+  <!-- 1. ONBOARDING -->
+  <div class="screen">
+    <div class="sbar"><h2>1 · Onboarding do desafio</h2><span class="meta">entrada · 1 tela</span></div>
+    <div class="sbody">
+      <p class="lbl">Qual é o desafio?</p>
+      <div class="field">Ex.: “Como priorizar onde investir o próximo trimestre de produto?”</div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="ph">Anexar contexto<br><span class="sm">(doc, planilha, link)</span></div>
+        <div class="ph">Exemplos de desafio<br><span class="sm">(templates)</span></div>
+        <div class="ph">Continuar →</div>
+      </div>
+    </div>
+    <div class="note"><span class="badge b-ai">IA</span><span><b>Zona de IA:</b> sugere reformulações do desafio e exemplos. O usuário escolhe. Nenhuma decisão de valor aqui.</span></div>
+  </div>
+
+  <!-- 2. ESCOPO -->
+  <div class="screen">
+    <div class="sbar"><h2>2 · Escopo &amp; Intensidade (4Ms)</h2><span class="meta">escopo</span></div>
+    <div class="sbody">
+      <div class="grid g2">
+        <div>
+          <p class="lbl">Complexidade (5 dimensões)</p>
+          <div class="line m"></div><div class="line"></div><div class="line s"></div>
+          <p class="sm">ambiguidade · nº de opções · stakeholders · risco · horizonte</p>
+        </div>
+        <div>
+          <p class="lbl">Orçamento de recursos (4Ms)</p>
+          <span class="pill">Manpower</span><span class="pill">Minutes</span><span class="pill">Money</span><span class="pill">Motivation</span>
+          <div class="ph" style="margin-top:8px">Recomendação: <b style="color:var(--ink)">Sprint</b> · Journey · Method · Meta</div>
+        </div>
+      </div>
+    </div>
+    <div class="note"><span class="badge b-ai">IA</span><span><b>IA</b> pontua complexidade e recomenda a intensidade; o facilitador confirma o “gear”.</span></div>
+  </div>
+
+  <!-- 3. CHARTER + GATE 1 -->
+  <div class="screen">
+    <div class="sbar"><h2>3 · Charter — Enquadrar</h2><span class="meta">fase 1 · GATE 1</span></div>
+    <div class="sbody">
+      <div class="wheelbar"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      <div class="grid g2" style="margin-top:14px">
+        <div><p class="lbl">DNA do desafio</p><div class="field">Desafio / Objetivo / Restrições (1 linha cada)</div>
+          <p class="lbl" style="margin-top:12px">KPIs (curto / longo)</p><div class="line m"></div><div class="line s"></div></div>
+        <div><p class="lbl">Stakeholders</p>
+          <span class="pill">Decisores</span><span class="pill">internos</span><span class="pill">externos</span>
+          <div class="ph" style="margin-top:8px">Mapa influência × interesse</div></div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+        <span class="btn">Aprovar charter</span><span class="btn ghost">Editar</span>
+        <span class="badge b-gate" style="margin-left:auto">GATE 1 · aval do DNA + KPIs</span>
+      </div>
+    </div>
+    <div class="note"><span class="badge b-gate">GATE 1</span><span><b>Decisão humana:</b> nada avança sem o DNA do desafio e os KPIs aprovados. <span class="badge b-art">artefato</span> Charter.</span></div>
+  </div>
+
+  <!-- 4. EXPANDIR -->
+  <div class="screen">
+    <div class="sbar"><h2>4 · Expandir — Opções &amp; Critérios</h2><span class="meta">fase 2 · board duplo</span></div>
+    <div class="sbody">
+      <div class="wheelbar"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div>
+      <div class="grid g2" style="margin-top:14px">
+        <div><p class="lbl">Opções / soluções</p>
+          <div class="ph">cartão de ideia</div><div class="ph" style="margin-top:8px">cartão de ideia</div>
+          <div class="ph" style="margin-top:8px">cartão de ideia</div></div>
+        <div><p class="lbl">Critérios / filtros</p>
+          <div class="ph">critério</div><div class="ph" style="margin-top:8px">critério</div>
+          <div class="ph" style="margin-top:8px">critério</div></div>
+      </div>
+      <div style="margin-top:14px"><span class="btn ghost">+ Brainwriting</span> <span class="btn ghost">IA: ampliar pool ↗</span> <span class="btn ghost">IA: de-duplicar / clusterizar ↗</span></div>
+    </div>
+    <div class="note"><span class="badge b-ai">IA</span><span><b>Disciplina-assinatura:</b> gerar <b>opções E critérios em paralelo</b>. IA amplia e agrupa; humanos trazem o que importa. <span class="badge b-art">artefato</span> 2 listas.</span></div>
+  </div>
+
+  <!-- 5. RANQUEAR + GATE 2 -->
+  <div class="screen">
+    <div class="sbar"><h2>5 · Ranquear — matriz MCDA</h2><span class="meta">fase 3 · GATE 2</span></div>
+    <div class="sbody">
+      <div class="wheelbar"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div>
+      <table class="wf" style="margin-top:14px">
+        <tr><th>Opção \ Critério (peso)</th><th>C1 ·30%</th><th>C2 ·25%</th><th>C3 ·25%</th><th>C4 ·20%</th><th>Score</th></tr>
+        <tr><td>Opção A</td><td>•</td><td>•</td><td>•</td><td>•</td><td>—</td></tr>
+        <tr><td>Opção B</td><td>•</td><td>•</td><td>•</td><td>•</td><td>—</td></tr>
+        <tr><td>Opção C</td><td>•</td><td>•</td><td>•</td><td>•</td><td>—</td></tr>
+      </table>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <span class="ph" style="flex:1">Worksheet de pesos — quem é dono de cada peso (Decisor)</span>
+        <span class="badge b-gate">GATE 2 · pesos dos critérios = Decisores</span>
+      </div>
+    </div>
+    <div class="note"><span class="badge b-gate">GATE 2</span><span><b>Os Decisores são donos dos pesos.</b> A ordenação dos critérios <b>é</b> o funil. IA propõe pesos/trade-offs; humanos decidem. <span class="badge b-art">artefato</span> shortlist + critérios ponderados.</span></div>
+  </div>
+
+  <!-- 6. CONVERGIR + GATE 3 -->
+  <div class="screen">
+    <div class="sbar"><h2>6 · Convergir — Scorecard do Funil</h2><span class="meta">fase 4 · GATE 3</span></div>
+    <div class="sbody">
+      <div class="wheelbar"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div>
+      <table class="wf" style="margin-top:14px">
+        <tr><th>Opção</th><th>filtro 1</th><th>filtro 2</th><th>filtro 3</th><th>sobrevive?</th></tr>
+        <tr><td>A</td><td>passa</td><td>passa</td><td>passa</td><td><b>vencedora</b></td></tr>
+        <tr><td>B</td><td>passa</td><td>elimina</td><td>—</td><td>fora</td></tr>
+        <tr><td>C</td><td>elimina</td><td>—</td><td>—</td><td>fora</td></tr>
+      </table>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="ph">Proposta de valor (bloco)</div>
+        <div class="ph">Card de protótipo / conceito</div>
+      </div>
+      <div style="margin-top:14px;text-align:right"><span class="badge b-gate">GATE 3 · call de sobrevivência</span></div>
+    </div>
+    <div class="note"><span class="badge b-gate">GATE 3</span><span><b>Humano confirma</b> que a vencedora sobrevive ao mundo real. <span class="badge b-art">artefato</span> solução + conceito + scorecard.</span></div>
+  </div>
+
+  <!-- 7. OPERAR + GATE 4 -->
+  <div class="screen">
+    <div class="sbar"><h2>7 · Operar — plano &amp; KPIs</h2><span class="meta">fase 5 · GATE 4</span></div>
+    <div class="sbody">
+      <div class="wheelbar"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="ph">5W2H — ações + donos</div>
+        <div class="ph">Business Model Canvas (enxuto)</div>
+        <div class="ph">KPIs — baseline / meta / dono / cadência</div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <span class="ph" style="flex:1">Revalidação dos 4Ms (teste de realidade)</span>
+        <span class="badge b-gate">GATE 4 · go / no-go + orçamento</span>
+      </div>
+    </div>
+    <div class="note"><span class="badge b-gate">GATE 4</span><span>Go/no-go e orçamento ficam humanos. Se os 4Ms reprovam → loop-back. <span class="badge b-art">artefato</span> roadmap + modelo + KPIs vivos.</span></div>
+  </div>
+
+  <!-- 8. DECISION LOG -->
+  <div class="screen">
+    <div class="sbar"><h2>8 · Decision log</h2><span class="meta">saída · trilha auditável</span></div>
+    <div class="sbody">
+      <table class="wf">
+        <tr><th>Gate</th><th>Decisão</th><th>Opções consideradas</th><th>Quem</th><th>Confirmou / sobrescreveu IA</th></tr>
+        <tr><td>1</td><td>DNA + KPIs</td><td>—</td><td>Decisor</td><td>confirmou</td></tr>
+        <tr><td>2</td><td>Pesos</td><td>3 critérios</td><td>Decisores</td><td>sobrescreveu</td></tr>
+        <tr><td>3</td><td>Vencedora</td><td>A, B, C</td><td>Facilitador</td><td>confirmou</td></tr>
+      </table>
+      <div style="margin-top:12px"><span class="btn ghost">Exportar PDF ↗</span> <span class="sm">— o moat: memória de decisões + auditoria.</span></div>
+    </div>
+    <div class="note"><span class="badge b-art">artefato</span><span>Trilha completa: o que, opções, critérios aplicados, quem decidiu e se confirmou ou sobrescreveu a IA.</span></div>
+  </div>
+
+  <p class="sm" style="margin-top:24px">Arateko Labs · wireframe MVP v0.1 — low-fi. Próximo: estados vazios/carregamento, visão Participante (mobile) e fases Journey/Method.</p>
+</div>
+</body>
+</html>
