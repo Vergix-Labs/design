@@ -1,4 +1,4 @@
-# Arateko — Wireframe
+# Arateko — Wireframee
 
 Wireframes low-fidelity do **Arateko** (Innovation Intelligence & Strategy, by Arateko Labs).
 
