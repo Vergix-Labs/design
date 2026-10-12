@@ -26,3 +26,14 @@ Source of truth lives in `aravox-labs/guardrails`; this file is only a thin repo
 ## Validation
 
 Use the commands documented in this repo. If none are documented, inspect package/build files and run the narrowest relevant local check before committing.
+
+<!-- harness-ref:begin (gerado por propagate-harness-refs.sh — não editar à mão; regenere após canon bump) -->
+## 🔁 Harness — contrato multi-runtime (leitura obrigatória para agentes)
+
+Todo agente (Claude, OpenAI/Codex, opencode/Ollama) operando neste repo segue o contrato do Loop Engineering:
+
+- **Claude:** invoque as skills `agent-worker` / `agent-orchestrator` / `agent-approval-companion` / `daily-sprint-programming` / `session-closeout` (fonte canônica: `~/aravox-labs/guardrails/skills/`).
+- **Outros runtimes:** leia `~/aravox-labs/guardrails/portable/HARNESS-CORE.md` + o adapter do seu runtime em `~/aravox-labs/guardrails/portable/adapters/` ANTES de qualquer file-op. Agentes opencode prontos (symlink, sempre a versão vigente): `~/.config/opencode/agents/` — instale/atualize com `bash ~/aravox-labs/guardrails/portable/scripts/install-portable.sh`.
+- **Invariantes que nenhum runtime relaxa:** merge = founder, exceto classe auto-merge ratificada (DEC-242) · deploy/Cat A = founder · writer ≠ verifier ≠ merger · um worktree por ticket · evidência por comando · sinais exatos do vocabulário · DoD ⊆ ENTREGA.
+- **Versão vigente:** canon `2026-10-11b` · manifest `~/aravox-labs/guardrails/skills/dist/MANIFEST.json`.
+<!-- harness-ref:end -->
