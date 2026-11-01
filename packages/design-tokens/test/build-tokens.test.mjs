@@ -182,3 +182,33 @@ test('recusa: JSON malformado e recusa nao deixa dist parcial', () => {
   assert.notEqual(r.status, 0);
   assert.throws(() => readFileSync(join(out, 'tokens.css')));
 });
+
+test('recusa: valor com delimitadores desbalanceados, aspas sem par ou barra invertida', () => {
+  for (const bad of ['calc(1px', '"abc', "'abc", 'red\\', 'url(x', 'a)b', '[a', 'b]', 'f(a]', 'x(")")y(']) {
+    const doc = clone(source);
+    doc.themes.light[Object.keys(doc.themes.light)[0]].value = bad;
+    const r = run(fresh('rej-delim'), writeSrc('rej-delim-src', doc));
+    assert.notEqual(r.status, 0, bad);
+    assert.match(r.stderr, /delimitador invalido/, bad);
+  }
+});
+
+test('aceita: valores balanceados (funcoes, colchetes, aspas pareadas)', () => {
+  const doc = clone(source);
+  const [a, b, c] = Object.keys(doc.themes.light);
+  doc.themes.light[a].value = 'calc(1px + (2px * 3))';
+  doc.themes.light[b].value = '"Nome Com Espaco", sans-serif';
+  doc.themes.light[c].value = "[a b] 'x)' url(\"y(\")";
+  const out = buildOk('accept-delim', writeSrc('accept-delim-src', doc));
+  assert.ok(out.css.includes('calc(1px + (2px * 3))'));
+});
+
+test('recusa: defaultTheme herdado do prototipo (constructor, toString)', () => {
+  for (const inherited of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    const doc = clone(source);
+    doc.defaultTheme = inherited;
+    const r = run(fresh('rej-proto'), writeSrc('rej-proto-src', doc));
+    assert.notEqual(r.status, 0, inherited);
+    assert.match(r.stderr, /defaultTheme/, inherited);
+  }
+});
