@@ -20,7 +20,10 @@ Source of truth lives in `aravox-labs/guardrails`; this file is only a thin repo
 
 ## Repo-specific context
 
-- Stack detected: unknown.
+- This is the design repository of the Vergix suite (tokens and usage rules). See `README.md`.
+- Planned layout: `packages/design-tokens/` (semantic JSON tokens, CSS build with the `--vx-` prefix, themes, checker), delivered by `VRX-298`.
+- Nothing in this repo is published by default. Do not add a deploy configuration (`wrangler.jsonc` or equivalent) or a workflow without a registered decision (`DEC-344`, `DEC-348`).
+- History note: the previous prototype content was removed from `main` by `VRX-299`; it stays on the tag `legacy-arateko`.
 - Start with this repo's `README.md` and local tests before editing.
 
 ## Validation
