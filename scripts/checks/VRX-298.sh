@@ -138,14 +138,24 @@ shuffle_src() {
   ' "$1" "$2"
 }
 
-# order_independent <pacote> <src.json> <tag>: 0 se a fonte original e a embaralhada geram o mesmo sha256.
+# sha256_of <arquivo>: imprime o sha256 (64 hex) ou devolve 2. Saida ausente/malformada nunca vira "igual" nem "diferente".
+sha256_of() {
+  local h
+  h=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}') || return 2
+  printf '%s\n' "$h" | grep -Eq '^[0-9a-f]{64}$' || return 2
+  printf '%s\n' "$h"
+}
+
+# order_independent <pacote> <src.json> <tag>: 0 = mesmo sha256 com a fonte embaralhada; 1 = difere; 2 = erro/saida invalida.
 order_independent() {
+  local f h1 h2
   shuffle_src "$2" "$WORK/$3.shuffled.json" || return 2
   build_to "$1" "$2" "$WORK/$3.o1" >/dev/null 2>&1 || return 2
   build_to "$1" "$WORK/$3.shuffled.json" "$WORK/$3.o2" >/dev/null 2>&1 || return 2
-  local f
   for f in tokens.css tokens.json; do
-    [ "$(shasum -a 256 "$WORK/$3.o1/$f" | awk '{print $1}')" = "$(shasum -a 256 "$WORK/$3.o2/$f" | awk '{print $1}')" ] || return 1
+    h1=$(sha256_of "$WORK/$3.o1/$f") || return 2
+    h2=$(sha256_of "$WORK/$3.o2/$f") || return 2
+    [ "$h1" = "$h2" ] || return 1
   done
   return 0
 }
@@ -187,6 +197,8 @@ if [ "${1:-}" = "--negative" ]; then
       fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
     ' "$1" "$2"
   }
+  # Saida de comando que deveria falhar com rc 0/1 e saiu com outro rc = erro de ambiente, nunca "detectado".
+  need_rc01() { case "$2" in 0|1) ;; *) echo "DESCONHECIDO: $1: rc inesperado ($2)"; exit 3 ;; esac; }
   # Um mutante so conta como detectado pela RAZAO esperada.
   detected() { echo "$1: detectado ($2)"; DETECTED=$((DETECTED + 1)); }
   missed() { echo "$1: NAO detectado ($2)"; }
@@ -197,6 +209,7 @@ if [ "${1:-}" = "--negative" ]; then
   mutate_gen "$WORK/m1" 'const names = Object.keys(tokens).sort();' 'const names = Object.keys(tokens).sort().slice(0, -1);'
   build_to "$WORK/m1" "$COPY/src/tokens.json" "$WORK/m1out" >/dev/null 2>&1 || { echo "DESCONHECIDO: M1: build do mutante falhou"; exit 3; }
   rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m1out" >"$WORK/m1.log" 2>&1 || rc=$?
+  need_rc01 M1 "$rc"
   head -4 "$WORK/m1.log" | sed 's/^/    /'
   if [ "$rc" -eq 1 ] && grep -q -e 'declaracoes no CSS' "$WORK/m1.log" && grep -q -e 'nao reaparece no CSS' "$WORK/m1.log"; then
     detected "M1 (gerador descarta o ultimo token)" "verificador: contagem e token ausente"
@@ -206,9 +219,12 @@ if [ "${1:-}" = "--negative" ]; then
   TOTAL=$((TOTAL + 1))
   mkdir -p "$WORK/m2out"
   cp "$WORK/pos/tokens.json" "$WORK/pos/tokens.css" "$WORK/m2out/"
-  grep -v -e '--vx-color-text-default:' "$WORK/pos/tokens.css" > "$WORK/m2out/tokens.css" || true
+  rc=0; grep -v -e '--vx-color-text-default:' "$WORK/pos/tokens.css" > "$WORK/m2out/tokens.css" || rc=$?
+  [ "$rc" -eq 0 ] || { echo "DESCONHECIDO: M2: preparo do mutante falhou (grep rc=$rc)"; exit 3; }
+  if cmp -s "$WORK/pos/tokens.css" "$WORK/m2out/tokens.css"; then echo "DESCONHECIDO: M2: o mutante nao alterou o CSS"; exit 3; fi
   mutate_src "$WORK/m2out/tokens.json" 'for (const t of Object.keys(d.themes)) delete d.themes[t]["color.text.default"];'
   rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m2out" >"$WORK/m2.log" 2>&1 || rc=$?
+  need_rc01 M2 "$rc"
   head -4 "$WORK/m2.log" | sed 's/^/    /'
   if [ "$rc" -eq 1 ] && grep -q -e 'nao reaparece no CSS' "$WORK/m2.log"; then
     detected "M2 (token removido da saida)" "verificador: token nao reaparece"
@@ -219,6 +235,7 @@ if [ "${1:-}" = "--negative" ]; then
   cp -R "$COPY" "$WORK/m3"
   mutate_src "$WORK/m3/src/tokens.json" 'const t = Object.keys(d.themes)[0]; const n = Object.keys(d.themes[t])[0]; delete d.themes[t][n].provisional;'
   rc=0; build_to "$WORK/m3" "$WORK/m3/src/tokens.json" "$WORK/m3out" >"$WORK/m3.log" 2>&1 || rc=$?
+  need_rc01 M3 "$rc"
   if [ "$rc" -eq 1 ] && grep -q -e '"provisional" deve ser true' "$WORK/m3.log"; then
     detected "M3 (token sem provisional)" "gerador recusou por provisional"
   else missed "M3 (token sem provisional)" "rc=$rc sem a razao esperada: $(head -2 "$WORK/m3.log" | tr '\n' ' ')"; fi
@@ -228,6 +245,7 @@ if [ "${1:-}" = "--negative" ]; then
   cp -R "$COPY" "$WORK/m4"
   mutate_src "$WORK/m4/src/tokens.json" 'const t = Object.keys(d.themes)[0]; d.themes[t][Object.keys(d.themes[t])[0]].value = "calc(1px";'
   rc=0; build_to "$WORK/m4" "$WORK/m4/src/tokens.json" "$WORK/m4out" >"$WORK/m4.log" 2>&1 || rc=$?
+  need_rc01 M4 "$rc"
   if [ "$rc" -eq 1 ] && grep -q -e 'delimitador invalido' "$WORK/m4.log"; then
     detected "M4 (valor calc(1px desbalanceado)" "gerador recusou por delimitador"
   else missed "M4 (valor calc(1px desbalanceado)" "rc=$rc sem a razao esperada"; fi
@@ -238,6 +256,7 @@ if [ "${1:-}" = "--negative" ]; then
   mutate_gen "$WORK/m5" 'const errors = validate(doc);' 'const errors = [];'
   build_to "$WORK/m5" "$WORK/m4/src/tokens.json" "$WORK/m5out" >/dev/null 2>&1 || { echo "DESCONHECIDO: M5: build do mutante falhou"; exit 3; }
   rc=0; verify_dist "$WORK/m4/src/tokens.json" "$WORK/m5out" >"$WORK/m5.log" 2>&1 || rc=$?
+  need_rc01 M5 "$rc"
   head -3 "$WORK/m5.log" | sed 's/^/    /'
   if [ "$rc" -eq 1 ] && grep -q -e 'delimitadores desbalanceados' "$WORK/m5.log"; then
     detected "M5 (sem validacao, calc(1px no CSS)" "verificador: delimitadores desbalanceados"
@@ -249,8 +268,11 @@ if [ "${1:-}" = "--negative" ]; then
   mutate_gen "$WORK/m6" '.sort()' '' all
   build_to "$WORK/m6" "$COPY/src/tokens.json" "$WORK/m6ok" >/dev/null 2>&1 || { echo "DESCONHECIDO: M6: build do mutante falhou"; exit 3; }
   rc=0; order_independent "$WORK/m6" "$COPY/src/tokens.json" m6 || rc=$?
-  if [ "$rc" -eq 1 ]; then detected "M6 (gerador sem ordenacao)" "sha256 muda com a ordem da fonte"
-  else missed "M6 (gerador sem ordenacao)" "rc=$rc"; fi
+  case "$rc" in
+    1) detected "M6 (gerador sem ordenacao)" "sha256 muda com a ordem da fonte" ;;
+    0) missed "M6 (gerador sem ordenacao)" "a saida nao depende da ordem" ;;
+    *) echo "DESCONHECIDO: M6: prova de ordem com erro interno (rc=$rc)"; exit 3 ;;
+  esac
 
   echo "mutantes detectados: $DETECTED de $TOTAL"
   if [ "$DETECTED" -eq "$TOTAL" ]; then
@@ -284,8 +306,8 @@ echo "== (b) dois builds seguidos: mesmo sha256"
 if [ "$FAIL" -eq 0 ]; then
   build_to "$PKG" "$PKG/src/tokens.json" "$WORK/b2" >/dev/null 2>&1 || say_fail "(b) segundo build falhou"
   for f in tokens.css tokens.json; do
-    S1=$(shasum -a 256 "$WORK/b1/$f" | awk '{print $1}')
-    S2=$(shasum -a 256 "$WORK/b2/$f" | awk '{print $1}')
+    S1=$(sha256_of "$WORK/b1/$f") || { echo "DESCONHECIDO: sha256 de b1/$f indisponivel"; exit 3; }
+    S2=$(sha256_of "$WORK/b2/$f") || { echo "DESCONHECIDO: sha256 de b2/$f indisponivel"; exit 3; }
     echo "  $f: $S1 / $S2"
     [ "$S1" = "$S2" ] || say_fail "(b) $f difere entre dois builds"
   done
@@ -294,7 +316,8 @@ if [ "$FAIL" -eq 0 ]; then
   case "$rc" in
     0) echo "  sha256 igual com a fonte embaralhada" ;;
     1) say_fail "(b2) a saida depende da ordem das chaves da fonte" ;;
-    *) say_fail "(b2) build falhou na prova de ordem (rc=$rc)" ;;
+    2) echo "DESCONHECIDO: (b2) erro interno na prova de ordem"; exit 3 ;;
+    *) say_fail "(b2) rc inesperado na prova de ordem (rc=$rc)" ;;
   esac
 fi
 
