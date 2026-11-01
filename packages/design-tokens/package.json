@@ -1,0 +1,14 @@
+{
+  "name": "@vergix-labs/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tokens de design da suite Vergix: JSON semantico como fonte, CSS gerado com prefixo --vx-. Todos os valores sao provisorios ate o VRX-156.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build-tokens.mjs",
+    "test": "node --test test/build-tokens.test.mjs"
+  }
+}
