@@ -19,6 +19,28 @@ const UNSAFE_VALUE = /[;{}\r\n]|\/\*|\*\//;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
+/**
+ * Delimitadores do valor: devolve o motivo da recusa ou null.
+ * Recusa barra invertida, aspas sem par e parenteses/colchetes desbalanceados.
+ */
+export function delimiterProblem(value) {
+  const closers = { ')': '(', ']': '[' };
+  const stack = [];
+  let quote = null;
+  for (const ch of value) {
+    if (ch === '\\') return 'barra invertida nao e aceita';
+    if (quote) { if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') stack.push(ch);
+    else if (ch === ')' || ch === ']') {
+      if (stack.pop() !== closers[ch]) return `"${ch}" sem abertura correspondente`;
+    }
+  }
+  if (quote) return 'aspas sem par';
+  if (stack.length > 0) return `"${stack[stack.length - 1]}" sem fechamento`;
+  return null;
+}
+
 /** Valida o documento. Devolve a lista de erros (vazia = valido). */
 export function validate(doc) {
   const errors = [];
@@ -27,7 +49,7 @@ export function validate(doc) {
     errors.push('"themes" deve ser um objeto com ao menos um tema');
     return errors;
   }
-  if (typeof doc.defaultTheme !== 'string' || !(doc.defaultTheme in doc.themes)) {
+  if (typeof doc.defaultTheme !== 'string' || !Object.hasOwn(doc.themes, doc.defaultTheme)) {
     errors.push('"defaultTheme" deve nomear um tema existente em "themes"');
   }
   for (const [theme, tokens] of Object.entries(doc.themes)) {
@@ -45,6 +67,10 @@ export function validate(doc) {
       }
       if (typeof token.value !== 'string' || token.value.trim() === '') errors.push(`${where}: "value" deve ser texto nao vazio`);
       else if (UNSAFE_VALUE.test(token.value)) errors.push(`${where}: "value" tem caractere que quebraria o CSS`);
+      else {
+        const problem = delimiterProblem(token.value);
+        if (problem) errors.push(`${where}: "value" com delimitador invalido (${problem})`);
+      }
       if (token.provisional !== true) errors.push(`${where}: "provisional" deve ser true (todo valor e provisorio ate o VRX-156)`);
     }
   }
