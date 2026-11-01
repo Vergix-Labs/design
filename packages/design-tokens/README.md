@@ -40,8 +40,12 @@ prefixo `--vx-`).
 - Nome de token: semantico, em segmentos separados por ponto, ao menos dois
   (`^[a-z][a-z0-9]*(\.[a-z0-9]+)+$`), por exemplo `color.text.default`,
   `color.surface.page`, `space.4`, `radius.default`, `font.family.base`.
-- Cada token tem so `value` (texto nao vazio, sem `;`, `{`, `}`, quebra de linha
-  ou comentario) e `provisional` (precisa ser `true`).
+- Cada token tem so `value` e `provisional` (precisa ser `true`). O `value` e
+  texto nao vazio, sem `;`, `{`, `}`, quebra de linha, comentario nem barra
+  invertida; aspas precisam ter par e `(`/`)` e `[`/`]` precisam estar
+  balanceados (senao o CSS gerado ficaria quebrado).
+- `defaultTheme` precisa ser uma chave propria de `themes` (nomes herdados como
+  `constructor` sao recusados).
 - Um tema sem valores e recusado.
 
 ## Como gerar
