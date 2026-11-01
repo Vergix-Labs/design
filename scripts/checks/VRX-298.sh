@@ -25,11 +25,29 @@ command -v node >/dev/null 2>&1 || { echo "DESCONHECIDO: node ausente"; exit 3; 
 command -v git >/dev/null 2>&1 || { echo "DESCONHECIDO: git ausente"; exit 3; }
 command -v shasum >/dev/null 2>&1 || { echo "DESCONHECIDO: shasum ausente"; exit 3; }
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "DESCONHECIDO: fora de um repo git"; exit 3; }
+[ -n "$ROOT" ] && [ -d "$ROOT" ] || { echo "DESCONHECIDO: raiz do repo invalida: '$ROOT'"; exit 3; }
 
 TMP_BASE="${TMPDIR:-/Volumes/sanDiskPro/Developer/AgentWork/tmp}"
 [ -d "$TMP_BASE" ] || { echo "DESCONHECIDO: diretorio temporario indisponivel: $TMP_BASE"; exit 3; }
-WORK=$(mktemp -d "${TMP_BASE%/}/vrx298.XXXXXX") || { echo "DESCONHECIDO: mktemp falhou"; exit 3; }
-trap 'rm -rf "$WORK"' EXIT
+# EXIT: remove o temporario sem alterar o exit code original (rm que falha nao muda o veredito).
+WORK=""
+cleanup() {
+  local rc=$?
+  trap - EXIT
+  if [ -n "${WORK:-}" ]; then rm -rf "$WORK" || true; fi
+  exit "$rc"
+}
+trap cleanup EXIT
+MK=$(mktemp -d "${TMP_BASE%/}/vrx298.XXXXXX") || { echo "DESCONHECIDO: mktemp falhou"; exit 3; }
+case "$MK" in "${TMP_BASE%/}"/vrx298.?*) ;; *) echo "DESCONHECIDO: mktemp devolveu caminho inesperado: '$MK'"; exit 3 ;; esac
+[ -d "$MK" ] || { echo "DESCONHECIDO: mktemp nao criou o diretorio: $MK"; exit 3; }
+WORK="$MK"
+# teste de escrita ANTES da primeira escrita real
+if ! ( : > "$WORK/.probe" ) 2>/dev/null; then echo "DESCONHECIDO: diretorio temporario sem permissao de escrita: $WORK"; exit 3; fi
+rm -f "$WORK/.probe" || true
+# Daqui em diante, qualquer erro nao tratado (em qualquer modo) e DESCONHECIDO (exit 3), nunca exit 1.
+set -E
+trap 'echo "DESCONHECIDO: erro interno (linha $LINENO)"; exit 3' ERR
 
 FAIL=0
 say_fail() { echo "FALHA: $*"; FAIL=1; }
@@ -123,10 +141,34 @@ if (errors.length) { for (const e of errors) console.log('  ' + e); process.exit
 EOF
 
 # verify_dist <src.json> <dist-dir>
-verify_dist() { node "$WORK/verify.js" "$1" "$2"; }
+# 0 = confere (com a linha de resumo "fonte: ..."); 1 = reprovou; saida vazia/rc estranho = exit 3.
+verify_dist() {
+  local out rc=0
+  out=$(trap - ERR; node "$WORK/verify.js" "$1" "$2" 2>&1) || rc=$?
+  if [ -n "$out" ]; then printf '%s\n' "$out"; fi
+  case "$rc" in
+    0) case "$out" in "fonte: "*) return 0 ;; *) echo "DESCONHECIDO: verificador sem linha de resumo"; exit 3 ;; esac ;;
+    1) # rc 1 so e "reprovou" se vier do proprio verificador (resumo ou erro conhecido); crash/saida estranha = exit 3
+       case "$out" in
+         *"fonte: "*|"fonte ilegivel"*|"dist/tokens.json ausente"*|"dist/tokens.css ausente"*) return 1 ;;
+         *) echo "DESCONHECIDO: verificador falhou sem relatorio proprio"; exit 3 ;;
+       esac ;;
+    *) echo "DESCONHECIDO: verificador com rc inesperado ($rc)"; exit 3 ;;
+  esac
+}
 
 # build_to <pacote> <src.json> <out-dir>
-build_to() { node "$1/scripts/build-tokens.mjs" "$3" --src "$2"; }
+# rc 0 so vale se tokens.css e tokens.json existem e nao estao vazios (senao rc 3).
+build_to() {
+  local rc=0
+  node "$1/scripts/build-tokens.mjs" "$3" --src "$2" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    if [ -s "$3/tokens.css" ] && [ -s "$3/tokens.json" ]; then return 0; fi
+    echo "build-tokens (checker): sucesso sem saida em $3" >&2
+    return 3
+  fi
+  return "$rc"
+}
 
 # shuffle_src <src.json> <dest.json>: mesma fonte com chaves em ordem inversa, em todos os niveis.
 shuffle_src() {
@@ -142,7 +184,8 @@ shuffle_src() {
 sha256_of() {
   local h
   h=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}') || return 2
-  printf '%s\n' "$h" | grep -Eq '^[0-9a-f]{64}$' || return 2
+  [ "${#h}" -eq 64 ] || return 2
+  case "$h" in *[!0-9a-f]*) return 2 ;; esac
   printf '%s\n' "$h"
 }
 
@@ -165,8 +208,6 @@ PKG="$ROOT/$PKG_REL"
 if [ "${1:-}" = "--negative" ]; then
   # Erro interno (preparo de mutante, node, cp...) NUNCA vira exit 1: vira exit 3.
   # O unico exit 1 deste modo sai do ramo explicito "todos detectados" no fim.
-  set -E
-  trap 'echo "DESCONHECIDO: erro interno no --negative (linha $LINENO)"; exit 3' ERR
   [ -f "$PKG/src/tokens.json" ] && [ -f "$PKG/scripts/build-tokens.mjs" ] || { echo "DESCONHECIDO: pacote ausente, nada a mutar"; exit 3; }
   COPY="$WORK/copy"
   mkdir -p "$COPY"
@@ -179,25 +220,38 @@ if [ "${1:-}" = "--negative" ]; then
   echo "controle positivo: copia intacta passa no verificador e na prova de ordem"
   DETECTED=0; TOTAL=0
 
-  # mutate_gen <dir> <ancora> <substituto> [all]: altera o gerador da copia; ancora ausente = erro interno.
+  # mutate_gen <dir> <ancora> <substituto> [all]: altera o gerador da copia; ancora ausente ou arquivo inalterado = exit 3.
   mutate_gen() {
+    local f="$1/scripts/build-tokens.mjs" before after
+    before=$(<"$f")
     node -e '
       const fs = require("fs"); const [f, a, b, all] = process.argv.slice(1);
       const s = fs.readFileSync(f, "utf8");
       if (!s.includes(a)) { console.error("ancora ausente: " + a); process.exit(7); }
       fs.writeFileSync(f, all === "all" ? s.split(a).join(b) : s.replace(a, b));
-    ' "$1/scripts/build-tokens.mjs" "$2" "$3" "${4:-once}"
+    ' "$f" "$2" "$3" "${4:-once}"
+    after=$(<"$f")
+    [ "$before" != "$after" ] || { echo "DESCONHECIDO: a mutacao nao alterou $f"; exit 3; }
   }
-  # mutate_src <arquivo> <js>: aplica uma mutacao JS (variavel d = documento) na fonte.
+  # mutate_src <arquivo> <js>: aplica uma mutacao JS (variavel d = documento) na fonte; arquivo inalterado = exit 3.
   mutate_src() {
+    local before after
+    before=$(<"$1")
     node -e '
       const fs = require("fs"); const f = process.argv[1];
       const d = JSON.parse(fs.readFileSync(f, "utf8"));
       eval(process.argv[2]);
       fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
     ' "$1" "$2"
+    after=$(<"$1")
+    [ "$before" != "$after" ] || { echo "DESCONHECIDO: a mutacao nao alterou $1"; exit 3; }
   }
-  # Saida de comando que deveria falhar com rc 0/1 e saiu com outro rc = erro de ambiente, nunca "detectado".
+  # has <texto> <trecho>: 0 se o trecho aparece no texto (bash puro; nao depende de grep).
+  has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
+  # Verificador: o log tem de trazer o resumo "fonte: ..." (erro inicial do verificador = ambiente quebrado).
+  need_summary() { has "$2" 'fonte: ' || { echo "DESCONHECIDO: $1: verificador sem resumo (entrada ou saida invalida)"; exit 3; }; }
+  # Gerador que recusou (rc 1) por razao diferente da esperada = ambiente/entrada quebrados, nao "mutante nao detectado".
+  need_reason() { if [ "$2" -eq 1 ] && ! has "$3" "$4"; then echo "DESCONHECIDO: $1: o gerador falhou por razao inesperada"; exit 3; fi; }
   need_rc01() { case "$2" in 0|1) ;; *) echo "DESCONHECIDO: $1: rc inesperado ($2)"; exit 3 ;; esac; }
   # Um mutante so conta como detectado pela RAZAO esperada.
   detected() { echo "$1: detectado ($2)"; DETECTED=$((DETECTED + 1)); }
@@ -211,7 +265,9 @@ if [ "${1:-}" = "--negative" ]; then
   rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m1out" >"$WORK/m1.log" 2>&1 || rc=$?
   need_rc01 M1 "$rc"
   head -4 "$WORK/m1.log" | sed 's/^/    /'
-  if [ "$rc" -eq 1 ] && grep -q -e 'declaracoes no CSS' "$WORK/m1.log" && grep -q -e 'nao reaparece no CSS' "$WORK/m1.log"; then
+  L=$(<"$WORK/m1.log")
+  need_summary M1 "$L"
+  if [ "$rc" -eq 1 ] && has "$L" 'declaracoes no CSS' && has "$L" 'nao reaparece no CSS'; then
     detected "M1 (gerador descarta o ultimo token)" "verificador: contagem e token ausente"
   else missed "M1 (gerador descarta o ultimo token)" "rc=$rc sem a razao esperada"; fi
 
@@ -219,15 +275,21 @@ if [ "${1:-}" = "--negative" ]; then
   TOTAL=$((TOTAL + 1))
   mkdir -p "$WORK/m2out"
   cp "$WORK/pos/tokens.json" "$WORK/pos/tokens.css" "$WORK/m2out/"
-  rc=0; grep -v -e '--vx-color-text-default:' "$WORK/pos/tokens.css" > "$WORK/m2out/tokens.css" || rc=$?
-  [ "$rc" -eq 0 ] || { echo "DESCONHECIDO: M2: preparo do mutante falhou (grep rc=$rc)"; exit 3; }
-  if cmp -s "$WORK/pos/tokens.css" "$WORK/m2out/tokens.css"; then echo "DESCONHECIDO: M2: o mutante nao alterou o CSS"; exit 3; fi
+  node -e '
+    const fs = require("fs"); const [i, o] = process.argv.slice(1);
+    const kept = fs.readFileSync(i, "utf8").split("\n").filter((l) => !l.includes("--vx-color-text-default:"));
+    fs.writeFileSync(o, kept.join("\n"));
+  ' "$WORK/pos/tokens.css" "$WORK/m2out/tokens.css"
+  A=$(<"$WORK/pos/tokens.css"); B=$(<"$WORK/m2out/tokens.css")
+  [ "$A" != "$B" ] || { echo "DESCONHECIDO: M2: o mutante nao alterou o CSS"; exit 3; }
   mutate_src "$WORK/m2out/tokens.json" 'for (const t of Object.keys(d.themes)) delete d.themes[t]["color.text.default"];'
   rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m2out" >"$WORK/m2.log" 2>&1 || rc=$?
   need_rc01 M2 "$rc"
   head -4 "$WORK/m2.log" | sed 's/^/    /'
-  if [ "$rc" -eq 1 ] && grep -q -e 'nao reaparece no CSS' "$WORK/m2.log"; then
-    detected "M2 (token removido da saida)" "verificador: token nao reaparece"
+  L=$(<"$WORK/m2.log")
+  need_summary M2 "$L"
+  if [ "$rc" -eq 1 ] && has "$L" 'nao reaparece no CSS' && has "$L" 'ausente em dist/tokens.json'; then
+    detected "M2 (token removido da saida)" "verificador: token ausente no CSS e no JSON"
   else missed "M2 (token removido da saida)" "rc=$rc sem a razao esperada"; fi
 
   # M3: fonte com um token sem provisional -> o gerador recusa PELA razao "provisional"
@@ -236,9 +298,11 @@ if [ "${1:-}" = "--negative" ]; then
   mutate_src "$WORK/m3/src/tokens.json" 'const t = Object.keys(d.themes)[0]; const n = Object.keys(d.themes[t])[0]; delete d.themes[t][n].provisional;'
   rc=0; build_to "$WORK/m3" "$WORK/m3/src/tokens.json" "$WORK/m3out" >"$WORK/m3.log" 2>&1 || rc=$?
   need_rc01 M3 "$rc"
-  if [ "$rc" -eq 1 ] && grep -q -e '"provisional" deve ser true' "$WORK/m3.log"; then
+  L=$(<"$WORK/m3.log")
+  need_reason M3 "$rc" "$L" '"provisional" deve ser true'
+  if [ "$rc" -eq 1 ] && has "$L" '"provisional" deve ser true'; then
     detected "M3 (token sem provisional)" "gerador recusou por provisional"
-  else missed "M3 (token sem provisional)" "rc=$rc sem a razao esperada: $(head -2 "$WORK/m3.log" | tr '\n' ' ')"; fi
+  else missed "M3 (token sem provisional)" "rc=$rc sem a razao esperada"; fi
 
   # M4: fonte com valor de delimitador desbalanceado -> o gerador recusa PELA razao "delimitador"
   TOTAL=$((TOTAL + 1))
@@ -246,7 +310,9 @@ if [ "${1:-}" = "--negative" ]; then
   mutate_src "$WORK/m4/src/tokens.json" 'const t = Object.keys(d.themes)[0]; d.themes[t][Object.keys(d.themes[t])[0]].value = "calc(1px";'
   rc=0; build_to "$WORK/m4" "$WORK/m4/src/tokens.json" "$WORK/m4out" >"$WORK/m4.log" 2>&1 || rc=$?
   need_rc01 M4 "$rc"
-  if [ "$rc" -eq 1 ] && grep -q -e 'delimitador invalido' "$WORK/m4.log"; then
+  L=$(<"$WORK/m4.log")
+  need_reason M4 "$rc" "$L" 'delimitador invalido'
+  if [ "$rc" -eq 1 ] && has "$L" 'delimitador invalido'; then
     detected "M4 (valor calc(1px desbalanceado)" "gerador recusou por delimitador"
   else missed "M4 (valor calc(1px desbalanceado)" "rc=$rc sem a razao esperada"; fi
 
@@ -258,7 +324,9 @@ if [ "${1:-}" = "--negative" ]; then
   rc=0; verify_dist "$WORK/m4/src/tokens.json" "$WORK/m5out" >"$WORK/m5.log" 2>&1 || rc=$?
   need_rc01 M5 "$rc"
   head -3 "$WORK/m5.log" | sed 's/^/    /'
-  if [ "$rc" -eq 1 ] && grep -q -e 'delimitadores desbalanceados' "$WORK/m5.log"; then
+  L=$(<"$WORK/m5.log")
+  need_summary M5 "$L"
+  if [ "$rc" -eq 1 ] && has "$L" 'delimitadores desbalanceados'; then
     detected "M5 (sem validacao, calc(1px no CSS)" "verificador: delimitadores desbalanceados"
   else missed "M5 (sem validacao, calc(1px no CSS)" "rc=$rc sem a razao esperada"; fi
 
@@ -266,7 +334,6 @@ if [ "${1:-}" = "--negative" ]; then
   TOTAL=$((TOTAL + 1))
   cp -R "$COPY" "$WORK/m6"
   mutate_gen "$WORK/m6" '.sort()' '' all
-  build_to "$WORK/m6" "$COPY/src/tokens.json" "$WORK/m6ok" >/dev/null 2>&1 || { echo "DESCONHECIDO: M6: build do mutante falhou"; exit 3; }
   rc=0; order_independent "$WORK/m6" "$COPY/src/tokens.json" m6 || rc=$?
   case "$rc" in
     1) detected "M6 (gerador sem ordenacao)" "sha256 muda com a ordem da fonte" ;;
@@ -289,22 +356,27 @@ echo "== (a) build gera dist/tokens.css e dist/tokens.json com os tokens da font
 [ -f "$PKG/src/tokens.json" ] || say_fail "(a) $PKG_REL/src/tokens.json ausente"
 [ -f "$PKG/scripts/build-tokens.mjs" ] || say_fail "(a) $PKG_REL/scripts/build-tokens.mjs ausente"
 if [ "$FAIL" -eq 0 ]; then
-  if build_to "$PKG" "$PKG/src/tokens.json" "$WORK/b1" >"$WORK/b1.log" 2>&1; then
-    cat "$WORK/b1.log"
-    if verify_dist "$PKG/src/tokens.json" "$WORK/b1" >"$WORK/v.log" 2>&1; then
+  rc=0; build_to "$PKG" "$PKG/src/tokens.json" "$WORK/b1" >"$WORK/b1.log" 2>&1 || rc=$?
+  cat "$WORK/b1.log"
+  case "$rc" in
+    0)
+      rc=0; verify_dist "$PKG/src/tokens.json" "$WORK/b1" >"$WORK/v.log" 2>&1 || rc=$?
       cat "$WORK/v.log"
-      echo "== (c) todo --vx-* e todo token com provisional:true; (d) round-trip por tema: ok (mesmo verificador)"
-    else
-      cat "$WORK/v.log"; say_fail "(a)(c)(d) verificador reprovou a saida"
-    fi
-  else
-    cat "$WORK/b1.log"; say_fail "(a) o build falhou"
-  fi
+      if [ "$rc" -eq 0 ]; then
+        echo "== (c) todo --vx-* e todo token com provisional:true; (d) round-trip por tema: ok (mesmo verificador)"
+      else
+        say_fail "(a)(c)(d) verificador reprovou a saida"
+      fi ;;
+    1) # recusa do proprio gerador (mensagem "build-tokens: ...") e falha real; rc 1 sem mensagem = ferramenta quebrada
+       L=$(<"$WORK/b1.log")
+       case "$L" in "build-tokens: "*) say_fail "(a) o gerador recusou a fonte" ;; *) echo "DESCONHECIDO: (a) build falhou sem mensagem do gerador"; exit 3 ;; esac ;;
+    *) echo "DESCONHECIDO: (a) build com rc inesperado ($rc)"; exit 3 ;;
+  esac
 fi
 
 echo "== (b) dois builds seguidos: mesmo sha256"
 if [ "$FAIL" -eq 0 ]; then
-  build_to "$PKG" "$PKG/src/tokens.json" "$WORK/b2" >/dev/null 2>&1 || say_fail "(b) segundo build falhou"
+  build_to "$PKG" "$PKG/src/tokens.json" "$WORK/b2" >/dev/null 2>&1 || { echo "DESCONHECIDO: (b) segundo build falhou apos o primeiro passar"; exit 3; }
   for f in tokens.css tokens.json; do
     S1=$(sha256_of "$WORK/b1/$f") || { echo "DESCONHECIDO: sha256 de b1/$f indisponivel"; exit 3; }
     S2=$(sha256_of "$WORK/b2/$f") || { echo "DESCONHECIDO: sha256 de b2/$f indisponivel"; exit 3; }
@@ -324,29 +396,76 @@ fi
 echo "== (e) a marca anterior nao aparece em nenhum arquivo"
 P="ara""teko"
 if [ -d "$PKG" ]; then
-  COUNTS=$(grep -r -i -c "$P" "$PKG" "$ROOT/scripts/checks/VRX-298.sh" 2>/dev/null || true)
-  NFILES=$(printf '%s\n' "$COUNTS" | grep -c . || true)
-  NONZERO=$(printf '%s\n' "$COUNTS" | grep -v -e ':0$' | grep -c . || true)
-  echo "  arquivos varridos: $NFILES; com ocorrencia: $NONZERO"
-  [ "$NFILES" -gt 0 ] || say_fail "(e) nada varrido"
+  FILES=$(find "$PKG" -type f) || { echo "DESCONHECIDO: (e) find falhou"; exit 3; }
+  EXPECTED=1   # o proprio checker
+  while IFS= read -r line; do [ -z "$line" ] || EXPECTED=$((EXPECTED + 1)); done <<EOF
+$FILES
+EOF
+  # grep -c: rc 0 = ha ocorrencia, 1 = nenhuma (legitimo), >=2 = erro. Erro nunca vira "zero".
+  rc=0; COUNTS=$(trap - ERR; grep -r -i -c "$P" "$PKG" "$ROOT/scripts/checks/VRX-298.sh" 2>/dev/null) || rc=$?
+  case "$rc" in 0|1) ;; *) echo "DESCONHECIDO: (e) grep falhou (rc=$rc)"; exit 3 ;; esac
+  NFILES=0; NONZERO=0
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in *:[0-9]*) ;; *) echo "DESCONHECIDO: (e) saida do grep fora do formato: '$line'"; exit 3 ;; esac
+    n=${line##*:}
+    case "$n" in ''|*[!0-9]*) echo "DESCONHECIDO: (e) contagem invalida: '$line'"; exit 3 ;; esac
+    NFILES=$((NFILES + 1))
+    if [ "$n" -ne 0 ]; then NONZERO=$((NONZERO + 1)); fi
+  done <<EOF
+$COUNTS
+EOF
+  echo "  arquivos varridos: $NFILES (esperado $EXPECTED); com ocorrencia: $NONZERO"
+  [ "$NFILES" -eq "$EXPECTED" ] || { echo "DESCONHECIDO: (e) o grep nao varreu todos os arquivos"; exit 3; }
+  if [ "$rc" -eq 0 ] && [ "$NONZERO" -eq 0 ]; then echo "DESCONHECIDO: (e) rc do grep e as contagens discordam"; exit 3; fi
+  if [ "$rc" -eq 1 ] && [ "$NONZERO" -ne 0 ]; then echo "DESCONHECIDO: (e) rc do grep e as contagens discordam"; exit 3; fi
   [ "$NONZERO" -eq 0 ] || say_fail "(e) ocorrencia da marca anterior"
 else
   say_fail "(e) $PKG_REL ausente"
 fi
 
 echo "== (f) git diff --name-only --no-renames $BASE_REF contido nos PATHS"
-git -C "$ROOT" rev-parse --verify -q "$BASE_REF^{commit}" >/dev/null || { echo "DESCONHECIDO: $BASE_REF nao resolve"; exit 3; }
-echo "  base: $BASE_REF = $(git -C "$ROOT" rev-parse "$BASE_REF")"
-DIFF_NAMES=$(git -C "$ROOT" diff --name-only --no-renames "$BASE_REF") || { echo "DESCONHECIDO: git diff contra $BASE_REF falhou"; exit 3; }
-CHANGED=$( { printf '%s\n' "$DIFF_NAMES"; git -C "$ROOT" ls-files --others --exclude-standard; } | grep . | sort -u )
-OUT=0
+BASE_SHA=$(git -C "$ROOT" rev-parse --verify -q "$BASE_REF^{commit}") || { echo "DESCONHECIDO: $BASE_REF nao resolve"; exit 3; }
+[ "${#BASE_SHA}" -eq 40 ] || { echo "DESCONHECIDO: sha de $BASE_REF invalido: '$BASE_SHA'"; exit 3; }
+case "$BASE_SHA" in *[!0-9a-f]*) echo "DESCONHECIDO: sha de $BASE_REF invalido: '$BASE_SHA'"; exit 3 ;; esac
+echo "  base: $BASE_REF = $BASE_SHA"
+DIFF_NAMES=$(git -C "$ROOT" diff --name-only --no-renames "$BASE_SHA") || { echo "DESCONHECIDO: git diff contra $BASE_REF falhou"; exit 3; }
+UNTRACKED=$(git -C "$ROOT" ls-files --others --exclude-standard) || { echo "DESCONHECIDO: git ls-files falhou"; exit 3; }
+# contraprova independente: `git diff --quiet` (0 = sem diferenca, 1 = ha diferenca) tem de concordar com a lista de nomes
+rc=0; git -C "$ROOT" diff --quiet --no-renames "$BASE_SHA" || rc=$?
+case "$rc" in
+  0) [ -z "$DIFF_NAMES" ] || { echo "DESCONHECIDO: (f) git diff --quiet diz 'sem diferenca' mas a lista de nomes nao e vazia"; exit 3; } ;;
+  1) [ -n "$DIFF_NAMES" ] || { echo "DESCONHECIDO: (f) git diff --quiet diz 'ha diferenca' mas a lista de nomes e vazia"; exit 3; } ;;
+  *) echo "DESCONHECIDO: (f) git diff --quiet rc inesperado ($rc)"; exit 3 ;;
+esac
+# contraprova de untracked: `git status --porcelain -uall` (linhas "?? ") tem de concordar com `ls-files --others`
+STATUS=$(git -C "$ROOT" status --porcelain -uall) || { echo "DESCONHECIDO: (f) git status falhou"; exit 3; }
+NU_LS=0; NU_ST=0
+while IFS= read -r l; do [ -z "$l" ] || NU_LS=$((NU_LS + 1)); done <<EOF
+$UNTRACKED
+EOF
+while IFS= read -r l; do case "$l" in "?? "*) NU_ST=$((NU_ST + 1)) ;; esac; done <<EOF
+$STATUS
+EOF
+[ "$NU_LS" -eq "$NU_ST" ] || { echo "DESCONHECIDO: (f) untracked: ls-files ($NU_LS) e status ($NU_ST) discordam"; exit 3; }
+in_allowed() {
+  local l
+  while IFS= read -r l; do
+    if [ "$l" = "$1" ]; then return 0; fi
+  done <<EOF
+$ALLOWED
+EOF
+  return 1
+}
+OUT=0; NCH=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if ! printf '%s\n' "$ALLOWED" | grep -qxF -e "$f"; then echo "  fora dos PATHS: $f"; OUT=$((OUT + 1)); fi
+  NCH=$((NCH + 1))
+  if ! in_allowed "$f"; then echo "  fora dos PATHS: $f"; OUT=$((OUT + 1)); fi
 done <<EOF
-$CHANGED
+$DIFF_NAMES
+$UNTRACKED
 EOF
-NCH=$(printf '%s\n' "$CHANGED" | grep -c . || true)
 echo "  arquivos alterados: $NCH; fora dos PATHS: $OUT"
 [ "$OUT" -eq 0 ] || say_fail "(f) $OUT arquivo(s) fora dos PATHS"
 
