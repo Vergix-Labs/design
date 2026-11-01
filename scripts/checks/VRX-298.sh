@@ -38,7 +38,7 @@ say_fail() { echo "FALHA: $*"; FAIL=1; }
 cat > "$WORK/verify.js" <<'EOF'
 const fs = require('fs');
 const path = require('path');
-const [srcFile, distDir] = process.argv.slice(1);
+const [srcFile, distDir] = process.argv.slice(2);
 const errors = [];
 const fail = (m) => errors.push(m);
 let src, dist, css;
