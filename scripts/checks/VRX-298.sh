@@ -10,6 +10,7 @@
 set -euo pipefail
 
 PKG_REL="packages/design-tokens"
+BASE_REF="origin/main"   # base fixa e explicita do (f)
 
 # PATHS permitidos do ticket (um por linha, igualdade exata).
 ALLOWED='packages/design-tokens/package.json
@@ -41,6 +42,20 @@ const path = require('path');
 const [srcFile, distDir] = process.argv.slice(2);
 const errors = [];
 const fail = (m) => errors.push(m);
+// Delimitadores do valor: devolve o motivo ou null (implementacao propria do verificador).
+function badDelims(v) {
+  const st = []; let q = null;
+  for (const c of v) {
+    if (c === '\\') return 'barra invertida';
+    if (q) { if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") q = c;
+    else if (c === '(' || c === '[') st.push(c);
+    else if (c === ')' || c === ']') { const o = st.pop(); if (o !== (c === ')' ? '(' : '[')) return 'fechamento sem abertura'; }
+  }
+  if (q) return 'aspas sem par';
+  if (st.length) return 'abertura sem fechamento';
+  return null;
+}
 let src, dist, css;
 try { src = JSON.parse(fs.readFileSync(srcFile, 'utf8')); } catch (e) { console.log('fonte ilegivel: ' + e.message); process.exit(1); }
 try { dist = JSON.parse(fs.readFileSync(path.join(distDir, 'tokens.json'), 'utf8')); } catch (e) { console.log('dist/tokens.json ausente ou invalido: ' + e.message); process.exit(1); }
@@ -87,6 +102,8 @@ for (const t of themes) {
   for (const n of names) {
     const tok = src.themes[t][n];
     const v = '--vx-' + n.replace(/\./g, '-');
+    const bd = badDelims(String(tok.value));
+    if (bd) fail('valor com delimitadores desbalanceados (' + bd + ') em ' + t + '/' + n);
     if (tok.provisional !== true) fail('token sem provisional:true na fonte: ' + t + '/' + n); else srcProv++;
     if (block[v] === undefined) fail('round-trip: ' + t + '/' + n + ' nao reaparece no CSS como ' + v);
     else if (block[v] !== String(tok.value).trim()) fail('round-trip: ' + t + '/' + n + ' valor "' + tok.value + '" != CSS "' + block[v] + '"');
@@ -111,75 +128,138 @@ verify_dist() { node "$WORK/verify.js" "$1" "$2"; }
 # build_to <pacote> <src.json> <out-dir>
 build_to() { node "$1/scripts/build-tokens.mjs" "$3" --src "$2"; }
 
+# shuffle_src <src.json> <dest.json>: mesma fonte com chaves em ordem inversa, em todos os niveis.
+shuffle_src() {
+  node -e '
+    const fs = require("fs");
+    const rev = (v) => (v && typeof v === "object" && !Array.isArray(v))
+      ? Object.fromEntries(Object.keys(v).reverse().map((k) => [k, rev(v[k])])) : v;
+    fs.writeFileSync(process.argv[2], JSON.stringify(rev(JSON.parse(fs.readFileSync(process.argv[1], "utf8"))), null, 2) + "\n");
+  ' "$1" "$2"
+}
+
+# order_independent <pacote> <src.json> <tag>: 0 se a fonte original e a embaralhada geram o mesmo sha256.
+order_independent() {
+  shuffle_src "$2" "$WORK/$3.shuffled.json" || return 2
+  build_to "$1" "$2" "$WORK/$3.o1" >/dev/null 2>&1 || return 2
+  build_to "$1" "$WORK/$3.shuffled.json" "$WORK/$3.o2" >/dev/null 2>&1 || return 2
+  local f
+  for f in tokens.css tokens.json; do
+    [ "$(shasum -a 256 "$WORK/$3.o1/$f" | awk '{print $1}')" = "$(shasum -a 256 "$WORK/$3.o2/$f" | awk '{print $1}')" ] || return 1
+  done
+  return 0
+}
+
 PKG="$ROOT/$PKG_REL"
 
 if [ "${1:-}" = "--negative" ]; then
+  # Erro interno (preparo de mutante, node, cp...) NUNCA vira exit 1: vira exit 3.
+  # O unico exit 1 deste modo sai do ramo explicito "todos detectados" no fim.
+  set -E
+  trap 'echo "DESCONHECIDO: erro interno no --negative (linha $LINENO)"; exit 3' ERR
   [ -f "$PKG/src/tokens.json" ] && [ -f "$PKG/scripts/build-tokens.mjs" ] || { echo "DESCONHECIDO: pacote ausente, nada a mutar"; exit 3; }
   COPY="$WORK/copy"
   mkdir -p "$COPY"
   cp -R "$PKG/src" "$PKG/scripts" "$PKG/test" "$PKG/package.json" "$COPY/"
-  # controle positivo: a copia intacta tem de passar
-  if ! build_to "$COPY" "$COPY/src/tokens.json" "$WORK/pos" >/dev/null 2>&1 || ! verify_dist "$COPY/src/tokens.json" "$WORK/pos"; then
-    echo "DESCONHECIDO: controle positivo falhou (copia intacta nao passa); mutantes nao sao interpretaveis"; exit 3
-  fi
-  echo "controle positivo: copia intacta passa no verificador"
+  # controle positivo: a copia intacta tem de passar (e ser independente da ordem)
+  build_to "$COPY" "$COPY/src/tokens.json" "$WORK/pos" >/dev/null 2>&1 || { echo "DESCONHECIDO: controle positivo: build da copia intacta falhou"; exit 3; }
+  verify_dist "$COPY/src/tokens.json" "$WORK/pos" >/dev/null 2>&1 || { echo "DESCONHECIDO: controle positivo: copia intacta reprovada pelo verificador"; exit 3; }
+  rc=0; order_independent "$COPY" "$COPY/src/tokens.json" pos || rc=$?
+  [ "$rc" -eq 0 ] || { echo "DESCONHECIDO: controle positivo: copia intacta nao passa a prova de ordem (rc=$rc)"; exit 3; }
+  echo "controle positivo: copia intacta passa no verificador e na prova de ordem"
   DETECTED=0; TOTAL=0
 
-  # M1: gerador descarta o ultimo token de cada tema
-  cp -R "$COPY" "$WORK/m1"
-  node -e '
-    const fs = require("fs"); const f = process.argv[1];
-    const s = fs.readFileSync(f, "utf8");
-    const a = "const names = Object.keys(tokens).sort();";
-    if (!s.includes(a)) process.exit(7);
-    fs.writeFileSync(f, s.replace(a, "const names = Object.keys(tokens).sort().slice(0, -1);"));
-  ' "$WORK/m1/scripts/build-tokens.mjs" || { echo "DESCONHECIDO: ancora do mutante M1 nao encontrada no gerador"; exit 3; }
-  TOTAL=$((TOTAL + 1))
-  if build_to "$WORK/m1" "$WORK/m1/src/tokens.json" "$WORK/m1out" >/dev/null 2>&1 && verify_dist "$COPY/src/tokens.json" "$WORK/m1out" >"$WORK/m1.log" 2>&1; then
-    echo "M1 (gerador descarta o ultimo token): NAO detectado"
-  else
-    echo "M1 (gerador descarta o ultimo token): detectado"; sed 's/^/    /' "$WORK/m1.log" 2>/dev/null | head -4 || true; DETECTED=$((DETECTED + 1))
-  fi
+  # mutate_gen <dir> <ancora> <substituto> [all]: altera o gerador da copia; ancora ausente = erro interno.
+  mutate_gen() {
+    node -e '
+      const fs = require("fs"); const [f, a, b, all] = process.argv.slice(1);
+      const s = fs.readFileSync(f, "utf8");
+      if (!s.includes(a)) { console.error("ancora ausente: " + a); process.exit(7); }
+      fs.writeFileSync(f, all === "all" ? s.split(a).join(b) : s.replace(a, b));
+    ' "$1/scripts/build-tokens.mjs" "$2" "$3" "${4:-once}"
+  }
+  # mutate_src <arquivo> <js>: aplica uma mutacao JS (variavel d = documento) na fonte.
+  mutate_src() {
+    node -e '
+      const fs = require("fs"); const f = process.argv[1];
+      const d = JSON.parse(fs.readFileSync(f, "utf8"));
+      eval(process.argv[2]);
+      fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
+    ' "$1" "$2"
+  }
+  # Um mutante so conta como detectado pela RAZAO esperada.
+  detected() { echo "$1: detectado ($2)"; DETECTED=$((DETECTED + 1)); }
+  missed() { echo "$1: NAO detectado ($2)"; }
 
-  # M2: um token removido do dist/tokens.json e do dist/tokens.css gerados
+  # M1: gerador descarta o ultimo token de cada tema -> o verificador reprova por contagem/token ausente
+  TOTAL=$((TOTAL + 1))
+  cp -R "$COPY" "$WORK/m1"
+  mutate_gen "$WORK/m1" 'const names = Object.keys(tokens).sort();' 'const names = Object.keys(tokens).sort().slice(0, -1);'
+  build_to "$WORK/m1" "$COPY/src/tokens.json" "$WORK/m1out" >/dev/null 2>&1 || { echo "DESCONHECIDO: M1: build do mutante falhou"; exit 3; }
+  rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m1out" >"$WORK/m1.log" 2>&1 || rc=$?
+  head -4 "$WORK/m1.log" | sed 's/^/    /'
+  if [ "$rc" -eq 1 ] && grep -q -e 'declaracoes no CSS' "$WORK/m1.log" && grep -q -e 'nao reaparece no CSS' "$WORK/m1.log"; then
+    detected "M1 (gerador descarta o ultimo token)" "verificador: contagem e token ausente"
+  else missed "M1 (gerador descarta o ultimo token)" "rc=$rc sem a razao esperada"; fi
+
+  # M2: token removido da saida (dist/tokens.json e dist/tokens.css)
+  TOTAL=$((TOTAL + 1))
   mkdir -p "$WORK/m2out"
   cp "$WORK/pos/tokens.json" "$WORK/pos/tokens.css" "$WORK/m2out/"
   grep -v -e '--vx-color-text-default:' "$WORK/pos/tokens.css" > "$WORK/m2out/tokens.css" || true
-  node -e '
-    const fs = require("fs"); const f = process.argv[1];
-    const d = JSON.parse(fs.readFileSync(f, "utf8"));
-    for (const t of Object.keys(d.themes)) delete d.themes[t]["color.text.default"];
-    fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
-  ' "$WORK/m2out/tokens.json"
-  TOTAL=$((TOTAL + 1))
-  if verify_dist "$COPY/src/tokens.json" "$WORK/m2out" >"$WORK/m2.log" 2>&1; then
-    echo "M2 (token removido da saida): NAO detectado"
-  else
-    echo "M2 (token removido da saida): detectado"; sed 's/^/    /' "$WORK/m2.log" | head -4 || true; DETECTED=$((DETECTED + 1))
-  fi
+  mutate_src "$WORK/m2out/tokens.json" 'for (const t of Object.keys(d.themes)) delete d.themes[t]["color.text.default"];'
+  rc=0; verify_dist "$COPY/src/tokens.json" "$WORK/m2out" >"$WORK/m2.log" 2>&1 || rc=$?
+  head -4 "$WORK/m2.log" | sed 's/^/    /'
+  if [ "$rc" -eq 1 ] && grep -q -e 'nao reaparece no CSS' "$WORK/m2.log"; then
+    detected "M2 (token removido da saida)" "verificador: token nao reaparece"
+  else missed "M2 (token removido da saida)" "rc=$rc sem a razao esperada"; fi
 
-  # M3: fonte com um token sem provisional -> o gerador tem de recusar (exit != 0)
-  cp -R "$COPY" "$WORK/m3"
-  node -e '
-    const fs = require("fs"); const f = process.argv[1];
-    const d = JSON.parse(fs.readFileSync(f, "utf8"));
-    const t = Object.keys(d.themes)[0]; const n = Object.keys(d.themes[t])[0];
-    delete d.themes[t][n].provisional;
-    fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n");
-  ' "$WORK/m3/src/tokens.json"
+  # M3: fonte com um token sem provisional -> o gerador recusa PELA razao "provisional"
   TOTAL=$((TOTAL + 1))
-  if build_to "$WORK/m3" "$WORK/m3/src/tokens.json" "$WORK/m3out" >/dev/null 2>&1; then
-    echo "M3 (token sem provisional): NAO detectado (o gerador aceitou)"
-  else
-    echo "M3 (token sem provisional): detectado (o gerador recusou)"; DETECTED=$((DETECTED + 1))
-  fi
+  cp -R "$COPY" "$WORK/m3"
+  mutate_src "$WORK/m3/src/tokens.json" 'const t = Object.keys(d.themes)[0]; const n = Object.keys(d.themes[t])[0]; delete d.themes[t][n].provisional;'
+  rc=0; build_to "$WORK/m3" "$WORK/m3/src/tokens.json" "$WORK/m3out" >"$WORK/m3.log" 2>&1 || rc=$?
+  if [ "$rc" -eq 1 ] && grep -q -e '"provisional" deve ser true' "$WORK/m3.log"; then
+    detected "M3 (token sem provisional)" "gerador recusou por provisional"
+  else missed "M3 (token sem provisional)" "rc=$rc sem a razao esperada: $(head -2 "$WORK/m3.log" | tr '\n' ' ')"; fi
+
+  # M4: fonte com valor de delimitador desbalanceado -> o gerador recusa PELA razao "delimitador"
+  TOTAL=$((TOTAL + 1))
+  cp -R "$COPY" "$WORK/m4"
+  mutate_src "$WORK/m4/src/tokens.json" 'const t = Object.keys(d.themes)[0]; d.themes[t][Object.keys(d.themes[t])[0]].value = "calc(1px";'
+  rc=0; build_to "$WORK/m4" "$WORK/m4/src/tokens.json" "$WORK/m4out" >"$WORK/m4.log" 2>&1 || rc=$?
+  if [ "$rc" -eq 1 ] && grep -q -e 'delimitador invalido' "$WORK/m4.log"; then
+    detected "M4 (valor calc(1px desbalanceado)" "gerador recusou por delimitador"
+  else missed "M4 (valor calc(1px desbalanceado)" "rc=$rc sem a razao esperada"; fi
+
+  # M5: gerador SEM validacao + fonte desbalanceada -> o VERIFICADOR enxerga o CSS quebrado
+  TOTAL=$((TOTAL + 1))
+  cp -R "$COPY" "$WORK/m5"
+  mutate_gen "$WORK/m5" 'const errors = validate(doc);' 'const errors = [];'
+  build_to "$WORK/m5" "$WORK/m4/src/tokens.json" "$WORK/m5out" >/dev/null 2>&1 || { echo "DESCONHECIDO: M5: build do mutante falhou"; exit 3; }
+  rc=0; verify_dist "$WORK/m4/src/tokens.json" "$WORK/m5out" >"$WORK/m5.log" 2>&1 || rc=$?
+  head -3 "$WORK/m5.log" | sed 's/^/    /'
+  if [ "$rc" -eq 1 ] && grep -q -e 'delimitadores desbalanceados' "$WORK/m5.log"; then
+    detected "M5 (sem validacao, calc(1px no CSS)" "verificador: delimitadores desbalanceados"
+  else missed "M5 (sem validacao, calc(1px no CSS)" "rc=$rc sem a razao esperada"; fi
+
+  # M6: gerador sem ordenacao -> idempotente, mas dependente da ordem da fonte; a prova de ordem detecta
+  TOTAL=$((TOTAL + 1))
+  cp -R "$COPY" "$WORK/m6"
+  mutate_gen "$WORK/m6" '.sort()' '' all
+  build_to "$WORK/m6" "$COPY/src/tokens.json" "$WORK/m6ok" >/dev/null 2>&1 || { echo "DESCONHECIDO: M6: build do mutante falhou"; exit 3; }
+  rc=0; order_independent "$WORK/m6" "$COPY/src/tokens.json" m6 || rc=$?
+  if [ "$rc" -eq 1 ]; then detected "M6 (gerador sem ordenacao)" "sha256 muda com a ordem da fonte"
+  else missed "M6 (gerador sem ordenacao)" "rc=$rc"; fi
 
   echo "mutantes detectados: $DETECTED de $TOTAL"
   if [ "$DETECTED" -eq "$TOTAL" ]; then
-    echo "NEGATIVO: todos os mutantes foram detectados (exit 1 esperado)"
+    echo "NEGATIVO: todos os mutantes foram detectados pela razao esperada (exit 1 esperado)"
+    trap - ERR
     exit 1
   fi
   echo "ATENCAO: instrumento cego para $((TOTAL - DETECTED)) mutante(s)"
+  trap - ERR
   exit 0
 fi
 
@@ -209,6 +289,13 @@ if [ "$FAIL" -eq 0 ]; then
     echo "  $f: $S1 / $S2"
     [ "$S1" = "$S2" ] || say_fail "(b) $f difere entre dois builds"
   done
+  echo "== (b2) independencia de ordem: fonte com chaves embaralhadas gera o mesmo sha256"
+  rc=0; order_independent "$PKG" "$PKG/src/tokens.json" main || rc=$?
+  case "$rc" in
+    0) echo "  sha256 igual com a fonte embaralhada" ;;
+    1) say_fail "(b2) a saida depende da ordem das chaves da fonte" ;;
+    *) say_fail "(b2) build falhou na prova de ordem (rc=$rc)" ;;
+  esac
 fi
 
 echo "== (e) a marca anterior nao aparece em nenhum arquivo"
@@ -224,9 +311,11 @@ else
   say_fail "(e) $PKG_REL ausente"
 fi
 
-echo "== (f) git diff --name-only origin/main contido nos PATHS"
-git -C "$ROOT" rev-parse --verify -q origin/main >/dev/null || { echo "DESCONHECIDO: origin/main ausente"; exit 3; }
-CHANGED=$( { git -C "$ROOT" diff --name-only origin/main; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u )
+echo "== (f) git diff --name-only --no-renames $BASE_REF contido nos PATHS"
+git -C "$ROOT" rev-parse --verify -q "$BASE_REF^{commit}" >/dev/null || { echo "DESCONHECIDO: $BASE_REF nao resolve"; exit 3; }
+echo "  base: $BASE_REF = $(git -C "$ROOT" rev-parse "$BASE_REF")"
+DIFF_NAMES=$(git -C "$ROOT" diff --name-only --no-renames "$BASE_REF") || { echo "DESCONHECIDO: git diff contra $BASE_REF falhou"; exit 3; }
+CHANGED=$( { printf '%s\n' "$DIFF_NAMES"; git -C "$ROOT" ls-files --others --exclude-standard; } | grep . | sort -u )
 OUT=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
