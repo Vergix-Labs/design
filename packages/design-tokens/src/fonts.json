@@ -1,0 +1,82 @@
+{
+  "faces": [
+    {
+      "family": "Spectral",
+      "weight": 400,
+      "style": "normal",
+      "file": "spectral/spectral-latin-400-normal.woff2"
+    },
+    {
+      "family": "Spectral",
+      "weight": 500,
+      "style": "normal",
+      "file": "spectral/spectral-latin-500-normal.woff2"
+    },
+    {
+      "family": "Spectral",
+      "weight": 600,
+      "style": "normal",
+      "file": "spectral/spectral-latin-600-normal.woff2"
+    },
+    {
+      "family": "Spectral",
+      "weight": 700,
+      "style": "normal",
+      "file": "spectral/spectral-latin-700-normal.woff2"
+    },
+    {
+      "family": "Spectral",
+      "weight": 400,
+      "style": "italic",
+      "file": "spectral/spectral-latin-400-italic.woff2"
+    },
+    {
+      "family": "Hanken Grotesk",
+      "weight": 400,
+      "style": "normal",
+      "file": "hanken-grotesk/hanken-grotesk-latin-400-normal.woff2"
+    },
+    {
+      "family": "Hanken Grotesk",
+      "weight": 500,
+      "style": "normal",
+      "file": "hanken-grotesk/hanken-grotesk-latin-500-normal.woff2"
+    },
+    {
+      "family": "Hanken Grotesk",
+      "weight": 600,
+      "style": "normal",
+      "file": "hanken-grotesk/hanken-grotesk-latin-600-normal.woff2"
+    },
+    {
+      "family": "Hanken Grotesk",
+      "weight": 700,
+      "style": "normal",
+      "file": "hanken-grotesk/hanken-grotesk-latin-700-normal.woff2"
+    },
+    {
+      "family": "Spline Sans Mono",
+      "weight": 400,
+      "style": "normal",
+      "file": "spline-sans-mono/spline-sans-mono-latin-400-normal.woff2"
+    },
+    {
+      "family": "Spline Sans Mono",
+      "weight": 500,
+      "style": "normal",
+      "file": "spline-sans-mono/spline-sans-mono-latin-500-normal.woff2"
+    },
+    {
+      "family": "Spline Sans Mono",
+      "weight": 600,
+      "style": "normal",
+      "file": "spline-sans-mono/spline-sans-mono-latin-600-normal.woff2"
+    },
+    {
+      "family": "Spline Sans Mono",
+      "weight": 700,
+      "style": "normal",
+      "file": "spline-sans-mono/spline-sans-mono-latin-700-normal.woff2"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # VRX-298: estrutura do pacote @vergix-labs/design-tokens (JSON semantico -> CSS --vx-).
-# Decisoes: DEC-344, DEC-348. Todo valor e provisorio ate o VRX-156.
+# Decisoes: DEC-344, DEC-348. "provisional" e booleano por token (true ou false) desde o VRX-301.
 #
 # Uso:  bash scripts/checks/VRX-298.sh              # DoD (a)-(f)
 #       bash scripts/checks/VRX-298.sh --negative   # (g) controles negativos em copia
@@ -12,14 +12,8 @@ set -euo pipefail
 PKG_REL="packages/design-tokens"
 BASE_REF="origin/main"   # base fixa e explicita do (f)
 
-# PATHS permitidos do ticket (um por linha, igualdade exata).
-ALLOWED='packages/design-tokens/package.json
-packages/design-tokens/README.md
-packages/design-tokens/.gitignore
-packages/design-tokens/src/tokens.json
-packages/design-tokens/scripts/build-tokens.mjs
-packages/design-tokens/test/build-tokens.test.mjs
-scripts/checks/VRX-298.sh'
+# PATHS permitidos (VRX-301, opcao A do 💬 75c703d3): o pacote inteiro + os 2 checkers.
+# in_allowed (mais abaixo) aceita o prefixo packages/design-tokens/ e as duas igualdades exatas.
 
 command -v node >/dev/null 2>&1 || { echo "DESCONHECIDO: node ausente"; exit 3; }
 command -v git >/dev/null 2>&1 || { echo "DESCONHECIDO: git ausente"; exit 3; }
@@ -122,19 +116,19 @@ for (const t of themes) {
     const v = '--vx-' + n.replace(/\./g, '-');
     const bd = badDelims(String(tok.value));
     if (bd) fail('valor com delimitadores desbalanceados (' + bd + ') em ' + t + '/' + n);
-    if (tok.provisional !== true) fail('token sem provisional:true na fonte: ' + t + '/' + n); else srcProv++;
+    if (typeof tok.provisional !== 'boolean') fail('token sem provisional booleano na fonte: ' + t + '/' + n); else srcProv++;
     if (block[v] === undefined) fail('round-trip: ' + t + '/' + n + ' nao reaparece no CSS como ' + v);
     else if (block[v] !== String(tok.value).trim()) fail('round-trip: ' + t + '/' + n + ' valor "' + tok.value + '" != CSS "' + block[v] + '"');
     else cssCount++;
     if (!dt[n]) fail('round-trip: ' + t + '/' + n + ' ausente em dist/tokens.json');
-    else if (dt[n].value !== tok.value || dt[n].provisional !== true) fail('dist/tokens.json diverge da fonte em ' + t + '/' + n);
+    else if (dt[n].value !== tok.value || dt[n].provisional !== tok.provisional) fail('dist/tokens.json diverge da fonte em ' + t + '/' + n);
     else distCount++;
   }
   for (const v of Object.keys(block)) if (!v.startsWith('--vx-')) fail('custom property sem prefixo --vx-: ' + v);
 }
 for (const sel of Object.keys(blocks)) for (const v of Object.keys(blocks[sel])) if (!v.startsWith('--vx-')) fail('custom property sem prefixo --vx-: ' + v);
 
-console.log('fonte: ' + expected + ' tokens em ' + themes.length + ' temas; CSS confere: ' + cssCount + '; JSON confere: ' + distCount + '; provisional:true: ' + srcProv);
+console.log('fonte: ' + expected + ' tokens em ' + themes.length + ' temas; CSS confere: ' + cssCount + '; JSON confere: ' + distCount + '; provisional booleano: ' + srcProv);
 if (expected === 0) fail('fonte sem tokens');
 if (cssCount !== expected || distCount !== expected || srcProv !== expected) fail('contagem difere da fonte (esperado ' + expected + ')');
 if (errors.length) { for (const e of errors) console.log('  ' + e); process.exit(1); }
@@ -292,15 +286,15 @@ if [ "${1:-}" = "--negative" ]; then
     detected "M2 (token removido da saida)" "verificador: token ausente no CSS e no JSON"
   else missed "M2 (token removido da saida)" "rc=$rc sem a razao esperada"; fi
 
-  # M3: fonte com um token sem provisional -> o gerador recusa PELA razao "provisional"
+  # M3: fonte com um token sem provisional booleano -> o gerador recusa PELA razao "provisional"
   TOTAL=$((TOTAL + 1))
   cp -R "$COPY" "$WORK/m3"
   mutate_src "$WORK/m3/src/tokens.json" 'const t = Object.keys(d.themes)[0]; const n = Object.keys(d.themes[t])[0]; delete d.themes[t][n].provisional;'
   rc=0; build_to "$WORK/m3" "$WORK/m3/src/tokens.json" "$WORK/m3out" >"$WORK/m3.log" 2>&1 || rc=$?
   need_rc01 M3 "$rc"
   L=$(<"$WORK/m3.log")
-  need_reason M3 "$rc" "$L" '"provisional" deve ser true'
-  if [ "$rc" -eq 1 ] && has "$L" '"provisional" deve ser true'; then
+  need_reason M3 "$rc" "$L" '"provisional" deve ser booleano'
+  if [ "$rc" -eq 1 ] && has "$L" '"provisional" deve ser booleano'; then
     detected "M3 (token sem provisional)" "gerador recusou por provisional"
   else missed "M3 (token sem provisional)" "rc=$rc sem a razao esperada"; fi
 
@@ -363,7 +357,7 @@ if [ "$FAIL" -eq 0 ]; then
       rc=0; verify_dist "$PKG/src/tokens.json" "$WORK/b1" >"$WORK/v.log" 2>&1 || rc=$?
       cat "$WORK/v.log"
       if [ "$rc" -eq 0 ]; then
-        echo "== (c) todo --vx-* e todo token com provisional:true; (d) round-trip por tema: ok (mesmo verificador)"
+        echo "== (c) todo --vx-* e todo token com provisional booleano; (d) round-trip por tema: ok (mesmo verificador)"
       else
         say_fail "(a)(c)(d) verificador reprovou a saida"
       fi ;;
@@ -449,12 +443,9 @@ $STATUS
 EOF
 [ "$NU_LS" -eq "$NU_ST" ] || { echo "DESCONHECIDO: (f) untracked: ls-files ($NU_LS) e status ($NU_ST) discordam"; exit 3; }
 in_allowed() {
-  local l
-  while IFS= read -r l; do
-    if [ "$l" = "$1" ]; then return 0; fi
-  done <<EOF
-$ALLOWED
-EOF
+  case "$1" in
+    packages/design-tokens/?*|scripts/checks/VRX-298.sh|scripts/checks/VRX-301.sh) return 0 ;;
+  esac
   return 1
 }
 OUT=0; NCH=0

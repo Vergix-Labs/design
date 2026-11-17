@@ -49,11 +49,11 @@ function parseCss(css) {
 const selectorOf = (theme) => (theme === source.defaultTheme ? ':root' : `[data-theme="${theme}"]`);
 const countSource = () => Object.values(source.themes).reduce((n, t) => n + Object.keys(t).length, 0);
 
-test('a fonte tem tema padrao, ao menos dois temas e so tokens provisorios', () => {
+test('a fonte tem tema padrao, ao menos dois temas e provisional booleano em todo token', () => {
   assert.ok(source.defaultTheme in source.themes);
   assert.ok(Object.keys(source.themes).length >= 2);
   for (const tokens of Object.values(source.themes)) {
-    for (const t of Object.values(tokens)) assert.equal(t.provisional, true);
+    for (const t of Object.values(tokens)) assert.equal(typeof t.provisional, 'boolean');
   }
 });
 
@@ -96,11 +96,19 @@ test('prefixo: toda custom property comeca com --vx-', () => {
   for (const v of vars) assert.ok(v.startsWith('--vx-'), v);
 });
 
-test('provisional: todo token do dist/tokens.json e provisional true', () => {
+test('provisional: o dist/tokens.json preserva o provisional da fonte, token a token', () => {
   const dist = JSON.parse(buildOk('prov').json);
-  for (const tokens of Object.values(dist.themes)) {
-    for (const t of Object.values(tokens)) assert.equal(t.provisional, true);
+  for (const [theme, tokens] of Object.entries(source.themes)) {
+    for (const [name, t] of Object.entries(tokens)) assert.equal(dist.themes[theme][name].provisional, t.provisional, `${theme}/${name}`);
   }
+  // controle: o valor sai da fonte, nao de uma constante (true e false atravessam o gerador)
+  const doc = clone(source);
+  const [a, b] = Object.keys(doc.themes.light);
+  doc.themes.light[a].provisional = true;
+  doc.themes.light[b].provisional = false;
+  const d = JSON.parse(buildOk('prov-ctl', writeSrc('prov-ctl-src', doc)).json);
+  assert.equal(d.themes.light[a].provisional, true);
+  assert.equal(d.themes.light[b].provisional, false);
 });
 
 test('tema padrao em :root e os demais em [data-theme="..."]', () => {
@@ -141,16 +149,20 @@ test('recusa: token sem provisional', () => {
   assert.match(r.stderr, /provisional/);
 });
 
-test('recusa: provisional diferente de true', () => {
-  const doc = clone(source);
-  doc.themes.light[Object.keys(doc.themes.light)[0]].provisional = false;
-  assert.notEqual(run(fresh('rej-false'), writeSrc('rej-false-src', doc)).status, 0);
+test('recusa: provisional que nao e booleano', () => {
+  for (const bad of ['true', 'false', 'yes', 1, 0, null]) {
+    const doc = clone(source);
+    doc.themes.light[Object.keys(doc.themes.light)[0]].provisional = bad;
+    const r = run(fresh('rej-nonbool'), writeSrc('rej-nonbool-src', doc));
+    assert.notEqual(r.status, 0, String(bad));
+    assert.match(r.stderr, /booleano/, String(bad));
+  }
 });
 
 test('recusa: nome fora do padrao semantico', () => {
   for (const bad of ['Color.Text', 'color', 'color-text-default', 'color..x', '1color.text', 'color.text_default']) {
     const doc = clone(source);
-    doc.themes.light[bad] = { value: '#000000', provisional: true };
+    doc.themes.light[bad] = { value: '#000000', provisional: false };
     const r = run(fresh('rej-name'), writeSrc('rej-name-src', doc));
     assert.notEqual(r.status, 0, bad);
     assert.match(r.stderr, /nome fora do padrao/, bad);
