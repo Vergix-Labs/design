@@ -86,12 +86,14 @@ if (tokens) {
       return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
     };
     for (const theme of ['light', 'dark']) {
-      for (const bg of ['color.surface.page', 'color.surface.raised']) {
-        const fg = th[theme] && th[theme]['color.text.default'], back = th[theme] && th[theme][bg];
-        const l1 = fg && lum(fg.value), l2 = back && lum(back.value);
-        if (l1 == null || l2 == null) { fail('contraste', theme + ': cor ausente ou invalida em text.default/' + bg); continue; }
-        const c = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-        if (c < 4.5) fail('contraste', theme + ': text.default x ' + bg + ' = ' + c.toFixed(2) + ' (< 4.5)');
+      for (const fgName of ['color.text.default', 'color.text.muted', 'color.text.subtle']) {
+        for (const bg of ['color.surface.page', 'color.surface.raised', 'color.surface.selected']) {
+          const fg = th[theme] && th[theme][fgName], back = th[theme] && th[theme][bg];
+          const l1 = fg && lum(fg.value), l2 = back && lum(back.value);
+          if (l1 == null || l2 == null) { fail('contraste', theme + ': cor ausente ou invalida em ' + fgName + '/' + bg); continue; }
+          const c = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+          if (c < 4.5) fail('contraste', theme + ': ' + fgName + ' x ' + bg + ' = ' + c.toFixed(2) + ' (< 4.5)');
+        }
       }
     }
   }
@@ -186,6 +188,8 @@ if [ "${1:-}" = "--negative" ]; then
         rm "$d/fonts/spectral/OFL.txt" ;;
       contrast)     # texto escuro sem contraste com o fundo escuro
         node -e 'const fs=require("fs");const f=process.argv[1];const d=JSON.parse(fs.readFileSync(f,"utf8"));d.themes.dark["color.text.default"].value="#2a313b";fs.writeFileSync(f,JSON.stringify(d,null,2)+"\n")' "$d/src/tokens.json" ;;
+      subtle)       # texto subtle do claro sem contraste sobre a superficie selecionada (par de apoio)
+        node -e 'const fs=require("fs");const f=process.argv[1];const d=JSON.parse(fs.readFileSync(f,"utf8"));d.themes.light["color.text.subtle"].value="#6b7280";fs.writeFileSync(f,JSON.stringify(d,null,2)+"\n")' "$d/src/tokens.json" ;;
       woff2)        # woff2 de uma familia removidos
         rm "$d"/fonts/hanken-grotesk/*.woff2 ;;
       pkgprivate)   # pacote volta a private true
@@ -199,6 +203,7 @@ if [ "${1:-}" = "--negative" ]; then
   run_mutant "M4 (contraste do texto escuro abaixo de 4,5)" contraste contrast
   run_mutant "M5 (woff2 da Hanken Grotesk removidos)" woff2 woff2
   run_mutant "M6 (package.json com private true)" pacote pkgprivate
+  run_mutant "M7 (text.subtle do claro a 3,94:1 sobre a superficie selecionada)" contraste subtle
 
   echo "mutantes detectados: $DETECTED de $TOTAL"
   if [ "$DETECTED" -eq "$TOTAL" ]; then

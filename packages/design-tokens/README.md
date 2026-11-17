@@ -18,6 +18,12 @@ tons de estado (sucesso, aviso, erro, info), `color.accent.hover`, `color.link.*
 as bordas de estado e as sombras nao existem na casca atual: sao propostas do
 agente. Nao tratar nenhum valor como "valor final da marca".
 
+Contraste: texto (`default`, `muted`, `subtle`) e texto de estado passam de 4,5:1
+sobre todas as superficies do pacote, nos dois temas (coberto por teste). As
+bordas (`color.border.*`) sao divisorias discretas e ficam abaixo de 3:1 contra o
+fundo; se algum componente usar borda como unica fronteira, o founder decide o tom
+no ajuste da paleta. `color.text.disabled` nao entra na regra dos 4,5:1.
+
 Decisoes de referencia: `DEC-344` (`Vergix-Labs/design` e o repositorio de design
 da suite) e `DEC-348` (a fonte e o front do Vergix v2, com nomes semanticos e
 prefixo `--vx-`).

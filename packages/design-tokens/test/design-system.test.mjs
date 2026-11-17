@@ -75,15 +75,18 @@ test('contraste >= 4,5:1: texto principal x fundo, nos dois temas', () => {
 });
 
 test('contraste >= 4,5:1: pares de apoio (muted, subtle, link, acento, estados) nos dois temas', () => {
+  const surfaces = ['color.surface.page', 'color.surface.raised', 'color.surface.hover', 'color.surface.selected', 'color.accent.subtle',
+    ...['success', 'warning', 'error', 'info'].map((s) => `color.${s}.surface`)];
+  const base = surfaces.slice(0, 5);
   for (const theme of themes) {
     const pairs = [
-      ['color.text.muted', 'color.surface.page'], ['color.text.muted', 'color.surface.raised'],
-      ['color.text.subtle', 'color.surface.page'], ['color.text.subtle', 'color.surface.raised'],
-      ['color.text.default', 'color.surface.hover'], ['color.text.default', 'color.surface.selected'],
+      // texto de leitura sobre toda superficie (incl. as de estado e a selecionada)
+      ...['color.text.default', 'color.text.muted', 'color.text.subtle'].flatMap((fg) => surfaces.map((bg) => [fg, bg])),
+      // texto de estado sobre as superficies base e sobre a propria superficie de estado
+      ...['success', 'warning', 'error', 'info'].flatMap((s) => [...base.map((bg) => [`color.${s}.text`, bg]), [`color.${s}.text`, `color.${s}.surface`]]),
       ['color.link.default', 'color.surface.page'], ['color.link.default', 'color.surface.raised'],
       ['color.accent.contrast', 'color.accent.default'], ['color.accent.contrast', 'color.accent.hover'],
       ['color.text.inverse', 'color.surface.inverse'], ['color.link.inverse', 'color.surface.inverse'],
-      ...['success', 'warning', 'error', 'info'].map((s) => [`color.${s}.text`, `color.${s}.surface`]),
     ];
     for (const [fg, bg] of pairs) {
       const c = contrast(val(theme, fg), val(theme, bg));
